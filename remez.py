@@ -33,5 +33,19 @@ def initial_reference(n):
   For reference, cf. chebfun's chebpts.m
   https://github.com/chebfun/chebfun/blob/db207bc9f48278ca4def15bf90591bfa44d0801d/%40chebtech2/chebpts.m#L34
   """
-  m = n - 1
-  return [math.sin(math.pi * j / (2 * m)) for j in range(-m, m + 1, 2)]
+  return [
+      math.sin(math.pi * j / (2 * (n - 1))) for j in range(-n + 1, n - 1, 2)
+  ]
+
+
+def build_linear_system(cheb_coeffs, xs, fxs):
+  """Builds the linear system solved per iteration of the Remez algorithm.
+
+  Builds the linear system
+
+  [b_0(x_0)  b_1(x_1)
+  [
+   ...
+  [
+  [
+  """
