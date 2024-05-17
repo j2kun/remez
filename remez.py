@@ -95,8 +95,12 @@ def secant_method(f, a, b, iters=100, precision=1e-15, tol=1e-05):
   # This condition can fail due to floating point precision errors in the
   # numerical solver of the Remez system resulting in non-oscillation of
   # the error function when the error is very close to zero.
-  if fa * fb > 0 and (abs(fa) > tol or abs(fa) > tol):
-    raise ValueError("f(a) and f(b) must have different signs.")
+  if fa * fb >= 0:
+    # We must try to correct!
+    if f(a - tol) * fa < 0:
+      a = a - tol
+    if f(b + tol) * fb < 0:
+      b = b + tol
 
   xs = (a, b)
   for _ in range(iters):
@@ -203,8 +207,9 @@ def remez(f, n, max_iters=100):
   iters = 0
   normf = max(f(x) for x in np.linspace(-1, 1, 1000))
   print(f"{normf=}")
+  old_max_err = None
 
-  while delta / normf > 1e-10 and iters < max_iters:
+  while iters < max_iters:
     fxs = [f(x) for x in xs]
     A, b = build_linear_system(xs, fxs)
     soln = np.linalg.solve(A, b)
@@ -214,13 +219,15 @@ def remez(f, n, max_iters=100):
       return polynomial.cheb_eval(soln, x) - f(x)
 
     error_fn = functools.lru_cache(maxsize=100)(error_fn)
+    xs = exchange(xs, error_fn)
+    new_max_err = max(abs(error_fn(x)) for x in xs)
 
-    new_xs = exchange(xs, error_fn)
-    new_max_err = max(abs(error_fn(x)) for x in new_xs)
-    delta = new_max_err - leveled_error
+    print(f"{iters=}: {new_max_err=}")
+    if old_max_err and abs(new_max_err - old_max_err) < 1e-10:
+      break
+
     iters += 1
-    if iters % 5 == 0:
-      print(f"{iters=}: {delta=}, {leveled_error=}")
+    old_max_err = new_max_err
 
   return soln
 

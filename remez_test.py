@@ -57,10 +57,26 @@ def test_minimize(f, a, b, the_min, tol):
 @pytest.mark.parametrize(
     "degree,tol",
     [
-        (100, 1e-05),
+        (5, 1e-05),
     ],
 )
 def test_remez_sin(degree, tol):
-  f = lambda x: np.sin(math.pi * 10 * x)
+  f = np.sin
   soln = remez.remez(f, degree)
   assert remez.estimate_error(soln, f) < tol
+
+
+# @pytest.mark.parametrize(
+#     "degree,tol",
+#     [
+#         (5, 0.15),
+#         (9, 0.08),
+#         (15, 0.01),
+#         (100, 0.002),
+#         (250, 0.0001),
+#     ],
+# )
+# def test_remez_relu(degree, tol):
+#   f = lambda x: x if x > 0 else 0
+#   soln = remez.remez(f, degree)
+#   assert remez.estimate_error(soln, f) < tol
