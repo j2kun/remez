@@ -44,7 +44,7 @@ def build_linear_system(xs, fxs):
 
   Builds the following linear system, where b_i is the i-th Chebyshev basis
   polynomial, sigma_i are the alternating signs for equioscillation, h is the
-  levelled error, and f(x_i) are the values of f at each x value.
+  leveled error, and f(x_i) are the values of f at each x value.
 
   [ b_0(x_0)   b_1(x_0)   ... b_n(x_0)   -sigma_0   ] [ c_0 ]   [ f(x_0)   ]
   [ b_0(x_1)   b_1(x_1)   ... b_n(x_1)   -sigma_1   ] [ c_1 ]   [ f(x_1)   ]
@@ -83,9 +83,19 @@ def build_linear_system(xs, fxs):
   return A, np.array(fxs)
 
 
-def secant_method(f, a, b, iters=100, precision=1e-15):
+def secant_method(f, a, b, iters=100, precision=1e-15, tol=1e-05):
   """Apply the secant method to find the roots of f within [a,b]."""
-  if f(a) * f(b) > 0:
+  fa = f(a)
+  fb = f(b)
+  if abs(fa) < precision:
+    return a
+  if abs(fb) < precision:
+    return b
+
+  # This condition can fail due to floating point precision errors in the
+  # numerical solver of the Remez system resulting in non-oscillation of
+  # the error function when the error is very close to zero.
+  if fa * fb > 0 and (abs(fa) > tol or abs(fa) > tol):
     raise ValueError("f(a) and f(b) must have different signs.")
 
   xs = (a, b)
@@ -100,36 +110,56 @@ def secant_method(f, a, b, iters=100, precision=1e-15):
   return next_x
 
 
-def compute_min(f, a, b):
+def minimize(f, a, b, precision=1e-15):
   """Find the min of f within [a,b].
 
-  Consider Brent's method, porting the scipy implementation at
+  Start with a golden section method.
+
+  Later consider Brent's method, porting the scipy implementation at
   https://github.com/scipy/scipy/blob/7dcd8c59933524986923cde8e9126f5fc2e6b30b/scipy/optimize/_optimize.py#L2430
+  Note that Brent's method requires golden section method as a subroutine,
+  and otherwise uses quadratic interpolation to shrink the interval.
   """
-  pass
+  golden_ratio = (math.sqrt(5) - 1) / 2
+  gr_times_b_minus_a = golden_ratio * (b - a)
+
+  # x1 = a + (1 - golden_ratio)(b-a)
+  x1 = b - gr_times_b_minus_a
+  # x2 = a + golden_ratio(b-a)
+  x2 = a + gr_times_b_minus_a
+  f1 = f(x1)
+  f2 = f(x2)
+
+  while abs(b - a) > precision:
+    if f1 > f2:
+      # [a, b] -> [x1, b]
+      a, x1, f1 = x1, x2, f2
+      x2 = a + golden_ratio * (b - a)
+      f2 = f(x2)
+    else:
+      # [a, b] -> [a, x2]
+      b, x2, f2 = x2, x1, f1
+      x1 = b - golden_ratio * (b - a)
+      f1 = f(x1)
+
+  return (a + b) / 2
 
 
-def compute_max(f, a, b):
+def maximize(f, a, b):
   """Find the max of f within [a,b]."""
-  return compute_min(lambda x: -f(x), a, b)
+  return minimize(lambda x: -f(x), a, b)
 
 
-def exchange(xs, errs, levelled_error, cheb_coeffs, f):
+def exchange(xs, error_fn):
   """Improve the reference point set for one iteration of the Remez algorithm.
 
   Args:
     xs: the current set of reference points x_i.
-    errs: the values of p(x_i) - f(x_i), where p is the current approximation
-      and f is the desired function to approximate.
-    levelled_error: the value h for which p(x_i) = f(x_i) +/- h (n.b., with
-      alternating signs as i increases) for all i.
-    cheb_coeffs: the Chebyshev coefficients of the current candidate polynomial.
-    f: the function to be approximated, as a callable.
+    error_fn: a function computing p(x_i) - f(x_i), where p is the current
+      approximation and f is the desired function to approximate.
 
   Returns:
-    - The new reference point set.
-    - The differences between the error function values at the old and new
-      reference points.
+    The new reference point set.
   """
   # Step 1: find the roots of the error function.
   # Since f is arbitrary, the error function is also arbitrary.
@@ -138,10 +168,6 @@ def exchange(xs, errs, levelled_error, cheb_coeffs, f):
   # For this implementation we are arbitrary, and instead apply the secant
   # method.
   roots = []
-
-  @functools.lru_cache(maxsize=100)
-  def error_fn(x):
-    return polynomial.cheb_eval(cheb_coeffs, x) - f(x)
 
   for i in range(len(xs) - 1):
     # Because the sign of the error oscillates, there is a root between
@@ -155,24 +181,48 @@ def exchange(xs, errs, levelled_error, cheb_coeffs, f):
   extrema = []
   extrema_bounds = [-1] + roots + [1]
   for i in range(len(extrema_bounds) - 1):
-    corresponding_error_value = errs[i]
+    corresponding_error_value = error_fn(xs[i])
     looking_for_min = corresponding_error_value < 0
     a, b = extrema_bounds[i], extrema_bounds[i + 1]
     extrema.append(
-        compute_min(error_fn, a, b)
+        minimize(error_fn, a, b)
         if looking_for_min
-        else compute_max(error_fn, a, b)
+        else maximize(error_fn, a, b)
     )
 
-  for ext in extrema:
-    if error_fn(ext) < h:
-      print(
-          "Warning: found extrema that are worse than starting point."
-          " Shenanigans are afoot!"
-      )
+  return extrema
 
-  diffs = [error_fn(ext) - err for (ext, err) in zip(extrema, errs)]
-  return (extrema, diffs)
+
+def remez(f, n, max_iters=100):
+  """Compute the the best degree-n polynomial approximation to f on [-1, 1].
+
+  Returns the coefficients of the computed polynomial in the Chebyshev basis.
+  """
+  xs = initial_reference(n + 2)
+  delta = 1
+  iters = 0
+  normf = max(f(x) for x in np.linspace(-1, 1, 1000))
+  print(f"{normf=}")
+
+  while delta / normf > 1e-10 and iters < max_iters:
+    fxs = [f(x) for x in xs]
+    A, b = build_linear_system(xs, fxs)
+    soln = np.linalg.solve(A, b)
+    coeffs, leveled_error = soln[:-1], soln[-1]
+
+    def error_fn(x):
+      return polynomial.cheb_eval(soln, x) - f(x)
+
+    error_fn = functools.lru_cache(maxsize=100)(error_fn)
+
+    new_xs = exchange(xs, error_fn)
+    new_max_err = max(abs(error_fn(x)) for x in new_xs)
+    delta = new_max_err - leveled_error
+    iters += 1
+    if iters % 5 == 0:
+      print(f"{iters=}: {delta=}, {leveled_error=}")
+
+  return soln
 
 
 def estimate_error(cheb_coeffs, f):

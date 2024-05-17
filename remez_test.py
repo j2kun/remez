@@ -1,6 +1,7 @@
 import math
 import numpy as np
 from numpy.testing import assert_allclose
+import pytest
 import remez
 
 cos_pi_4 = math.cos(math.pi / 4)
@@ -40,3 +41,26 @@ def test_build_linear_system():
   ])
   soln = np.linalg.solve(A, b)
   assert remez.estimate_error(soln, np.sin) < 1e-02
+
+
+@pytest.mark.parametrize(
+    "f,a,b,the_min,tol",
+    [
+        (lambda x: x * x, -1, 1, 0, 1e-15),
+        (lambda x: math.sin(x), -math.pi, 0, -math.pi / 2, 1e-07),
+    ],
+)
+def test_minimize(f, a, b, the_min, tol):
+  assert abs(remez.minimize(f, a, b) - the_min) < tol
+
+
+@pytest.mark.parametrize(
+    "degree,tol",
+    [
+        (100, 1e-05),
+    ],
+)
+def test_remez_sin(degree, tol):
+  f = lambda x: np.sin(math.pi * 10 * x)
+  soln = remez.remez(f, degree)
+  assert remez.estimate_error(soln, f) < tol
