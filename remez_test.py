@@ -51,7 +51,7 @@ def test_build_linear_system():
     ],
 )
 def test_minimize(f, a, b, the_min, tol):
-  assert abs(remez.minimize(f, a, b) - the_min) < tol
+  assert abs(remez.scipy_minimize(f, a, b) - the_min) < tol
 
 
 @pytest.mark.parametrize(
