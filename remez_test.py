@@ -58,6 +58,7 @@ def test_minimize(f, a, b, the_min, tol):
     "degree,tol",
     [
         (5, 1e-05),
+        (10, 1e-07),
     ],
 )
 def test_remez_sin(degree, tol):
@@ -66,17 +67,31 @@ def test_remez_sin(degree, tol):
   assert remez.estimate_error(soln, f) < tol
 
 
-# @pytest.mark.parametrize(
-#     "degree,tol",
-#     [
-#         (5, 0.15),
-#         (9, 0.08),
-#         (15, 0.01),
-#         (100, 0.002),
-#         (250, 0.0001),
-#     ],
-# )
-# def test_remez_relu(degree, tol):
-#   f = lambda x: x if x > 0 else 0
-#   soln = remez.remez(f, degree)
-#   assert remez.estimate_error(soln, f) < tol
+@pytest.mark.parametrize(
+    "fn, tol",
+    [
+        # from Table 1 of https://www.chebfun.org/publications/remez.pdf
+        (lambda x: math.sqrt(x + 1.001), 0.02),  # 0.01978007008380
+        (lambda x: math.sqrt(abs(x - 1)), 0.12),  # 0.11467954016268
+        (lambda x: math.log(1.0001 + x), 1.5), # 1.40439492981387
+    ],
+)
+def test_remez_degree_10(fn, tol):
+  soln = remez.remez(fn, 10)
+  assert remez.estimate_error(soln, fn) < tol
+
+@pytest.mark.parametrize(
+    "degree,tol",
+    [
+        (5, 0.04),
+        (9, 0.02),
+        (15, 0.01),
+        (100, 0.002),
+    ],
+)
+def test_remez_relu(degree, tol):
+  f = lambda x: x if x > 0 else 0
+  soln = remez.remez(f, degree)
+  err = remez.estimate_error(soln, f)
+  print((degree, err))
+  assert err < tol

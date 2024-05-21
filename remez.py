@@ -83,24 +83,55 @@ def build_linear_system(xs, fxs):
     return A, np.array(fxs)
 
 
-def secant_method(f, a, b, iters=100, precision=1e-15, tol=1e-05):
-    """Apply the secant method to find the roots of f within [a,b]."""
+def bisection_method(f, a, b, iters=100, precision=1e-15):
+    """Apply the bisection method to find the roots of f within [a,b]."""
     fa = f(a)
     fb = f(b)
 
     if fa * fb >= 0:
-        raise ValueError("invalid input to secant method")
+        raise ValueError("invalid input to bisection method")
 
-    xs = (a, b)
     for _ in range(iters):
-        next_x = xs[-1] - f(xs[-1]) * (xs[-1] - xs[-2]) / (f(xs[-1]) - f(xs[-2]))
-        xs = (xs[-1], next_x)
-        f_next_x = f(next_x)
-        if abs(f_next_x) < precision or abs(xs[0] - xs[1]) < precision:
-            return next_x
+        mid = (a + b) / 2
+        fmid = f(mid)
+        if fa * fmid < 0:
+            b, fb = mid, fmid
+        else:
+            a, fa = mid, fmid
+
+        if abs(fmid) < precision or abs(b - a) < precision:
+            return mid
 
     print(f"Warning: hit {iters} iters without reaching precision {precision}.")
-    return next_x
+    return mid
+
+
+# def _secant_method_without_fallback(f, a, b, iters=100, precision=1e-15):
+#     """Apply the secant method to find the roots of f within [a,b]."""
+#     fa = f(a)
+#     fb = f(b)
+#
+#     if fa * fb >= 0:
+#         raise ValueError("invalid input to secant method")
+#
+#     xs = (a, b)
+#     for _ in range(iters):
+#         next_x = xs[-1] - f(xs[-1]) * (xs[-1] - xs[-2]) / (f(xs[-1]) - f(xs[-2]))
+#         xs = (xs[-1], next_x)
+#         f_next_x = f(next_x)
+#         if abs(f_next_x) < precision or abs(xs[0] - xs[1]) < precision:
+#             return next_x
+#
+#     print(f"Warning: hit {iters} iters without reaching precision {precision}.")
+#     return next_x
+
+
+def secant_method(f, a, b, iters=100):
+    # result = _secant_method_without_fallback(f, a, b, iters)
+    # if a <= result <= b:
+    #     return result
+    # fall back to bisection method
+    return bisection_method(f, a, b, iters=iters)
 
 
 def minimize(f, a, b, precision=1e-15):
@@ -188,13 +219,16 @@ def find_roots(error_fn, xs, a, b):
         if err < 1e-15:
             roots.append(x)
             continue
-        delta = (
-            interval_lengths[i]
-            if i == 0
-            else min(interval_lengths[i], interval_lengths[i - 1])
-        )
-        left = x - delta / 2
-        right = x + delta / 2
+
+        if i == 0:
+            delta = interval_lengths[i]
+        elif i == len(xs) - 1:
+            delta = interval_lengths[i - 1]
+        else:
+            delta = min(interval_lengths[i], interval_lengths[i - 1])
+
+        left = max(a, x - delta / 2)
+        right = min(b, x + delta / 2)
         if error_fn(left) * error_fn(right) < 0:
             roots.append(secant_method(error_fn, left, right))
 
@@ -205,7 +239,7 @@ def find_roots(error_fn, xs, a, b):
             roots.append(secant_method(error_fn, xs[i], xs[i + 1]))
 
     # Some roots may be duplicate, so dedupe
-    roots = dedupe_floats(roots, 1e-10)
+    roots = dedupe_floats(roots, 1e-07)
     if len(roots) < len(xs) - 1:
         raise ValueError(
             f"Expected n+1={len(xs) - 1} roots, but found {len(roots)}: {roots}"
@@ -226,10 +260,8 @@ def exchange(xs, error_fn, a, b):
     Returns:
       The new reference point set.
     """
-    # Step 1: find the roots of the error function.
     # n+1 roots for n+2 reference points, and no duplicates
     roots = find_roots(error_fn, xs, a, b)
-
 
     # Now that we have the roots, there is a guaranteed extremum between each
     # pair of roots, including the endpoints of the interval [-1, 1]. Since
@@ -265,27 +297,23 @@ def exchange(xs, error_fn, a, b):
         # We need n+2 points, but only found n+1. Add an arbitrary point.
         new_points.append((xs[0] + extrema[0]) / 2)
 
-    if len(new_points) != len(xs):
+    if len(new_points) < len(xs):
         raise ValueError(
             f"Expected {len(xs)} new points, but found {len(new_points)}: {new_points}"
         )
 
-    return list(sorted(new_points))
+    return list(sorted(new_points))[: len(xs)]
 
 
-def remez(f, n, max_iters=100):
+def remez(f, n, max_iters=20):
     """Compute the the best degree-n polynomial approximation to f on [-1, 1].
 
     Returns the coefficients of the computed polynomial in the Chebyshev basis.
     """
     xs = initial_reference(n + 2)
-    delta = 1
-    iters = 0
-    normf = max(f(x) for x in np.linspace(-1, 1, 1000))
-    print(f"{normf=}")
-    old_max_err = None
+    errs = []
 
-    while iters < max_iters:
+    for iter in range(max_iters):
         fxs = [f(x) for x in xs]
         A, b = build_linear_system(xs, fxs)
         soln = np.linalg.solve(A, b)
@@ -300,7 +328,7 @@ def remez(f, n, max_iters=100):
         for i, x in enumerate(xs):
             oscillating_error = (-1) ** i * leveled_error
             diff_from_expected = abs(error_fn(x) - oscillating_error)
-            if diff_from_expected > 1e-07:
+            if diff_from_expected > 1e-06:
                 raise ValueError(
                     f"Solution of linear system is not valid at x={x}; "
                     f"poly(x)={polynomial.cheb_eval(coeffs, x)}; "
@@ -310,21 +338,24 @@ def remez(f, n, max_iters=100):
                     f"diff={error_fn(x) - oscillating_error}; "
                 )
 
-        plot_error(error_fn, -1, 1, xs, iters)
-        import ipdb
-
-        ipdb.set_trace()
-        xs = exchange(xs, error_fn, -1, 1)
-        new_max_err = max(abs(error_fn(x)) for x in xs)
-
-        print(f"{iters=}: {new_max_err=}")
-        if old_max_err and abs(new_max_err - old_max_err) < 1e-10:
+        # Anything less than 1e-07 and we get to the limit of the error
+        # tolerance of the numpy linalg solver, which starts crapping out at
+        # 1e-08. You can see this in action if you run this test with degree 10
+        # and plot the first error function. The interpolation is so good that
+        # the leveled error is off by up to 0.5e-08, at which point root
+        # finding fails because the error is not truly oscillating.
+        if max(abs(error_fn(x)) for x in xs) < 1e-08:
             break
 
-        iters += 1
-        old_max_err = new_max_err
+        xs = exchange(xs, error_fn, -1, 1)
+        plot_error(error_fn, -1, 1, xs, leveled_error, iter)
+        errs.append(max(abs(error_fn(x)) for x in xs))
 
-    return soln
+        print(f"{iter=}: {errs[-1]=}")
+        if len(errs) > 1 and abs((errs[-1] - errs[-2]) / errs[-2]) < 1e-03:
+            break
+
+    return coeffs
 
 
 def estimate_error(cheb_coeffs, f):
@@ -334,20 +365,24 @@ def estimate_error(cheb_coeffs, f):
     return np.max(pxs - fxs)
 
 
-def plot_error(fn, a, b, ref_pts, i):
+def plot_error(fn, a, b, ref_pts, leveled_error, i):
     import matplotlib.pyplot as plt
 
     # clear the plot from last time
     plt.clf()
 
-    xs = np.linspace(a - 0.01, b + 0.01, 250)
+    xs = np.linspace(a, b, 250)
     err = np.array([fn(x) for x in xs])
-    print(err)
     plt.plot(xs, err, "g")
 
     # and plot the reference points from xs along the curve
     ys = [fn(x) for x in ref_pts]
     plt.scatter(ref_pts, ys, c="r")
+
+    # and draw the x-axis
+    plt.axhline(y=0, color="k")
+    plt.axhline(y=leveled_error, color="k")
+    plt.axhline(y=-leveled_error, color="k")
 
     plt.savefig(f"error_{i:03d}.pdf")
     # raise ValueError("wat")
