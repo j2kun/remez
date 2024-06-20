@@ -28,3 +28,5 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+
+error*.pdf
