@@ -2,7 +2,10 @@
 
 
 def compute_barycentric_weights(xs, a=-1, b=1):
-    """Compute barycentric weights for Lagrange interpolation."""
+    """Compute barycentric weights for Lagrange interpolation.
+
+    Formula 3.2 of https://people.maths.ox.ac.uk/trefethen/barycentric.pdf
+    """
     n = len(xs)
     weights = [1] * n
     for j in range(n):
@@ -11,6 +14,8 @@ def compute_barycentric_weights(xs, a=-1, b=1):
                 continue
             weights[j] *= xs[j] - xs[k]
 
+    # A special tweak to improve numerical stability and avoid underflow.
+    # See section 7 of https://people.maths.ox.ac.uk/trefethen/barycentric.pdf
     C = (b - a) / 4
     C_inv = 1 / C
     for j in range(n):
@@ -52,6 +57,8 @@ def barycentric_lagrange(xs, ys, weights_computer=compute_barycentric_weights):
     def f(x):
         numerator = 0
         denominator = 0
+        # This is the Barycentric formula, equation 4.2 of
+        # https://people.maths.ox.ac.uk/trefethen/barycentric.pdf
         for w, xi, yi in zip(weights, xs, ys):
             if x == xi:
                 return yi
