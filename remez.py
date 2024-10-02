@@ -18,25 +18,25 @@ def initial_reference(n):
         return [0]
 
     """
-  The values are most simply described as
+    The values are most simply described as
 
-      cos(pi * j / (n-1)) for 0 <= j <= n-1.
+        cos(pi * j / (n-1)) for 0 <= j <= n-1.
 
-  But to enforce symmetry around the origin---broken by slight numerical
-  inaccuracies---and the left-to-right ordering, we apply the identity
+    But to enforce symmetry around the origin---broken by slight numerical
+    inaccuracies---and the left-to-right ordering, we apply the identity
 
-      cos(x + pi) = -cos(x) = sin(x - pi/2)
+        cos(x + pi) = -cos(x) = sin(x - pi/2)
 
-  to arrive at
+    to arrive at
 
-      sin(pi*j/(n-1) - pi/2) = sin(pi * (2j - (n-1)) / (2(n-1)))
+        sin(pi*j/(n-1) - pi/2) = sin(pi * (2j - (n-1)) / (2(n-1)))
 
-  An this is equivalent to the formula below, where the range of j is shifted
-  and rescaled from {0, ..., n-1} to {-n+1, -n+3, ..., n-3, n-1}.
+    An this is equivalent to the formula below, where the range of j is shifted
+    and rescaled from {0, ..., n-1} to {-n+1, -n+3, ..., n-3, n-1}.
 
-  For reference, cf. chebfun's chebpts.m
-  https://github.com/chebfun/chebfun/blob/db207bc9f48278ca4def15bf90591bfa44d0801d/%40chebtech2/chebpts.m#L34
-  """
+    For reference, cf. chebfun's chebpts.m
+    https://github.com/chebfun/chebfun/blob/db207bc9f48278ca4def15bf90591bfa44d0801d/%40chebtech2/chebpts.m#L34
+    """
     return [math.sin(math.pi * j / (2 * (n - 1))) for j in range(-n + 1, n, 2)]
 
 
@@ -348,7 +348,7 @@ def remez(f, n, max_iters=20):
             break
 
         xs = exchange(xs, error_fn, -1, 1)
-        plot_error(error_fn, -1, 1, xs, leveled_error, iter)
+        # plot_error(error_fn, -1, 1, xs, leveled_error, iter)
         errs.append(max(abs(error_fn(x)) for x in xs))
 
         print(f"{iter=}: {errs[-1]=}")
@@ -389,20 +389,41 @@ def plot_error(fn, a, b, ref_pts, leveled_error, i):
 
 
 if __name__ == "__main__":
-    xs = initial_reference(100)
-    fxs = np.sin(xs)
-    A, b = build_linear_system(xs, fxs)
-    soln = np.linalg.solve(A, b)
+    # debug code for a single linear system solution
+    # xs = initial_reference(8)
+    # fxs = np.sin(xs) * np.exp(xs)
+    # A, b = build_linear_system(xs, fxs)
+    # soln = np.linalg.solve(A, b)
+
+    # import matplotlib.pyplot as plt
+
+    # xs = np.linspace(-1, 1, 100)
+    # pxs = np.array([polynomial.cheb_eval(soln, x) for x in xs])
+    # fxs = np.sin(xs)
+    # err = pxs - fxs
+
+    # plt.plot(xs, pxs, "r")
+    # plt.plot(xs, fxs, "b")
+    # # plt.plot(xs, err, "g")
+    # plt.show()
+
+    # Run remez and plot results
+
+    # Example from Figure 1 of https://www.cs.ox.ac.uk/files/1948/NA-08-20.pdf
+    def f(x):
+        return np.sin(3 * math.pi * x) * np.exp(x)
+
+    soln = remez(f, 5, max_iters=2)
 
     # plot
     import matplotlib.pyplot as plt
 
-    xs = np.linspace(-1, 1, 1000)
+    xs = np.linspace(-1, 1, 100)
     pxs = np.array([polynomial.cheb_eval(soln, x) for x in xs])
-    fxs = np.sin(xs)
+    fxs = np.array([f(x) for x in xs])
     err = pxs - fxs
 
-    # plt.plot(xs, pxs, "r")
-    # plt.plot(xs, fxs, "b")
-    plt.plot(xs, err, "g")
+    plt.plot(xs, pxs, "b")  # blue is the approximation
+    plt.plot(xs, fxs, "g")  # green means good, the target
+    plt.plot(xs, err, "r")  # red means bad, the error
     plt.show()
